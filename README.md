@@ -3,9 +3,9 @@ THM是基于清华大学的中文语音数据集THCHS30生成的**袖珍**语音
 
 These scripts are used to generate the THM, a tiny dataset for speech separation task. It is derivied from the mandarin dataset [THCHS30](http://www.openslr.org/18) and noise dataset [WHAM!48kHz noise dataset](wham.whisper.ai). THM contains 4000 samples for train, 400 for dev and 400 for test. Scripts are based on WHAM and wsj0-mix.  
 
-[wham_scripts](https://storage.googleapis.com/whisper-public/wham_scripts.tar.gz) need to be placed under this folder.
+[wham_scripts](https://storage.googleapis.com/whisper-public/wham_scripts.tar.gz) need to be placed under this folder. Unzip file and put it under the folder, do not make any change.
 
-Default json files are placed under `local/metafile`. If you want to gen your own dataset, scripts can be found under (unzip file and put it under the folder, do not make any change):  
+Default json files are placed under `local/metafile`. If you want to gen your own dataset, scripts can be found under:  
 >./local/genRecipe.py  
 
 To generate wav files, you also need to place [high_res_wham](https://storage.googleapis.com/whisper-public/high_res_wham.zip) (can be found on wham website) and [THCHS30](http://www.openslr.org/18) under this folder. Script to generate wav files:  
