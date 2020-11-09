@@ -22,11 +22,11 @@ P_SRC_DEV   = P_SRC + "/dev"
 P_SRC_TST   = P_SRC + "/test"
 P_NOISY     = "./high_res_wham/audio"
 P_LOCAL     = "./local"
-P_JSON      = P_LOCAL + "/metafile"
+P_META      = P_LOCAL + "/metafile"
 P_TMP       = P_LOCAL + '/tmp'
 
 # generate paramenters
-N_SRC       = 2
+N_SRC       = 3
 N_PREMIX    = -1 
 N_NOISY_USE = 2000      # num of noisy used in synthesis
 N_MAX_DB    = 2.5
@@ -59,9 +59,9 @@ def catalize(data_list, path):
     return spk_cat
 
 """
-choose samples from sound source 
+choose samples from sound source (for 2speakers)
 """
-def chooseSample(category):
+def chooseSample_2src(category):
     n_speaker = len(category)
     premix    = []
     for s1_idx in range(n_speaker - 1):
@@ -72,17 +72,52 @@ def chooseSample(category):
             random.shuffle(ut2Idx)
             if N_PREMIX > len(ut1Idx) or N_PREMIX > len(ut2Idx):
                 print(f"N_PREMIX larger than ut({s1_idx}-{len(ut1Idx)}:{s2_idx}-{len(ut2Idx)})")
+            db = random.random() * N_MAX_DB
             for ut1, ut2 in zip(ut1Idx[:N_PREMIX], ut2Idx[:N_PREMIX]):
                 premix.append({
                     's1'        : category[s1_idx]['wav'][ut1],
                     's2'        : category[s2_idx]['wav'][ut2],
                     'permua'    : random.randint(0, 1),
-                    'db'        : random.random() * N_MAX_DB,
+                    'db'        : [db, -db],
                     'summery'   : {
                         's1_spk'    : category[s1_idx]['spk_id'],
                         's2_spk'    : category[s2_idx]['spk_id'],
                     }
                 })
+    random.shuffle(premix)
+    return premix
+
+"""
+(for 3speakers)
+"""
+def chooseSample_3src(category):
+    n_speaker = len(category)
+    premix    = []
+    for s1_idx in range(n_speaker - 1):
+        for s2_idx in range(s1_idx + 1, n_speaker):
+            for s3_idx in range(s2_idx + 1, n_speaker):
+                ut1Idx = [v for v in range(len(category[s1_idx]['wav']))]
+                ut2Idx = [v for v in range(len(category[s2_idx]['wav']))]
+                ut3Idx = [v for v in range(len(category[s3_idx]['wav']))]
+                random.shuffle(ut1Idx)
+                random.shuffle(ut2Idx)
+                random.shuffle(ut3Idx)
+                if N_PREMIX > len(ut1Idx) or N_PREMIX > len(ut2Idx) or N_PREMIX > len(ut3Idx):
+                    raise Exception('N_PREMIX larger than ut len')
+                db = random.random() * N_MAX_DB
+                for ut1, ut2, ut3 in zip(ut1Idx[:N_PREMIX], ut2Idx[:N_PREMIX], ut3Idx[:N_PREMIX]):
+                    premix.append({
+                        's1'        : category[s1_idx]['wav'][ut1],
+                        's2'        : category[s2_idx]['wav'][ut2],
+                        's3'        : category[s3_idx]['wav'][ut3],
+                        'permua'    : random.randint(0, 5),
+                        'db'        : [db, 0, -db],
+                        'summery'   : {
+                            's1_spk'    : category[s1_idx]['spk_id'],
+                            's2_spk'    : category[s2_idx]['spk_id'],
+                            's3_spk'    : category[s3_idx]['spk_id'],
+                        }
+                    })
     random.shuffle(premix)
     return premix
 
@@ -97,45 +132,48 @@ def genDetailOfRecipe(recipe, noisy_info):
     n_noisy    = len(noisy_idx)
 
     for r in recipe:
-        s1id = r['s1']['id']
-        s2id = r['s2']['id']
-        if (s1id in used and used[s1id] >= N_USE_SP) \
-        or (s2id in used and used[s2id] >= N_USE_SP):
+        spkValid = True
+        for spk in range(N_SRC):
+            spkStr = f's{spk + 1}'
+            spkId  = r[spkStr]['id']
+            if spkId in used and used[spkId] >= N_USE_SP:
+                spkValid = False
+                break
+
+        if not spkValid:
             continue
-        used[s1id] = 1 if s1id not in used else used[s1id] + 1
-        used[s2id] = 1 if s2id not in used else used[s2id] + 1
+
+        mix      = {
+            'db'            : r['db'],
+            'permutation'   : r['permua'],
+            'summery'       : r['summery'],
+        }
+        s_len    = []
+        out_name = ''
+        for spk in range(N_SRC):
+            spkStr = f's{spk + 1}'
+            spkId  = r[spkStr]['id']
+            used[spkId] = 1 if spkId not in used else used[spkId] + 1
+            out_name    = out_name + r[spkStr]['fname'][:-4] + '-'
+            s_len.append(len(read_scaled_wav(r[spkStr]['path'], 1, True)))
+            mix[spkStr + '_path'] = r[spkStr]['path']
+        mix['name'] = out_name + '.wav'
 
         """
         read wav files from disk, get len of each wav file, 
         decide the len of mixture, the start point of noisy, etc
         """
-        s_len = [
-            len(read_scaled_wav(r['s1']['path'], 1, True)), 
-            len(read_scaled_wav(r['s2']['path'], 1, True))
-        ]
-        
         # TODO: only min mode now
         mix_len = min(s_len)
         idx_n   = noisy_idx[random.randint(0, n_noisy - 1)]
         while noisy[idx_n]['len'] < mix_len:
             idx_n = noisy_idx[random.randint(0, n_noisy - 1)]
-        noisy_start = random.randint(0, noisy[idx_n]['len'] - mix_len)        
+        noisy_start         = random.randint(0, noisy[idx_n]['len'] - mix_len)
+        mix['noisy_path']   = noisy[idx_n]['path']
+        mix['noisy_start']  = noisy_start
+        mix['len']          = mix_len
 
-        out_name = r"{}-{}-{:.1f}-{}.wav".format(
-            r['s1']['fname'][:-4], r['s2']['fname'][:-4],
-            r['db'], r['permua']
-        )
-        mixture.append({
-            'name'          : out_name,
-            's1_path'       : r['s1']['path'],
-            's2_path'       : r['s2']['path'],
-            'db'            : r['db'],
-            'permutation'   : r['permua'],
-            'noisy_path'    : noisy[idx_n]['path'],
-            'noisy_start'   : noisy_start,
-            'len'           : mix_len,
-            'summery'       : r['summery'],
-        })
+        mixture.append(mix)
 
         if len(mixture) % 100 == 0:
             print('.', end='')
@@ -148,7 +186,6 @@ info      : infomation of audio in discrete
 noisy_idx : tell which idx is used in gen
 """
 def loadNoisyInfo():
-    
     _t          = os.listdir(P_NOISY)
     _t.sort()
     lst_noisy   = [(k, v) for k, v in zip(range(len(_t)),_t)]   # set of tuple (idx, path)
@@ -208,11 +245,11 @@ def plotBarOfNum(s):
             plt.bar(p_bar_spk_x[spk] + idx * 0.3, num, width=0.3, color=c)
     pprint(p_bar_spk_x)
     plt.show()
+
 """
 gen mixture
 """
 def genMetafile():       
-    os.makedirs(P_JSON, exist_ok=True) 
     """
     file: 
         set of file names under P_SRC_*
@@ -240,13 +277,21 @@ def genMetafile():
     ]
     noisy   = loadNoisyInfo()
     summery = {}
+    P_JSON  = P_META + f'/{N_SRC}speakers'
+    os.makedirs(P_META, exist_ok=True) 
+    os.makedirs(P_JSON, exist_ok=True) 
     for ds in Dataset:
         print(r"Gen {} speech samples".format(ds['name']), end='')
-        ds['file']      = [k for k in os.listdir(ds['path']) if not k.endswith('.trn')]
+        ds['file'] = [k for k in os.listdir(ds['path']) if not k.endswith('.trn')]
         ds['file'].sort()
-        ds['category']  = catalize(ds['file'], ds['path'])
-        ds['recipe']    = chooseSample(ds['category'])
-        ds['mixture']   = genDetailOfRecipe(ds['recipe'], noisy)
+        ds['category'] = catalize(ds['file'], ds['path'])
+        if N_SRC == 2:
+            ds['recipe'] = chooseSample_2src(ds['category'])
+        elif N_SRC == 3:
+            ds['recipe'] = chooseSample_3src(ds['category'])
+        else:
+            raise Exception('N_SRC not support!')
+        ds['mixture'] = genDetailOfRecipe(ds['recipe'], noisy)
         
         print("Complete!\nGenerated {} samples!".format(len(ds['mixture'])))
         with open(P_JSON + '/' + ds['name'] + '.json', 'w') as f:

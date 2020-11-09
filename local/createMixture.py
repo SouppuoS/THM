@@ -5,8 +5,10 @@ import random
 import soundfile as sf
 sys.path.extend('..')
 from wham_scripts.utils import read_scaled_wav, quantize
+from itertools import permutations
 
 FLAG_SHUFFLE = False
+N_SRC        = 3
 
 # num of mixture to gen
 N_GEN_TRN   = 5000
@@ -20,14 +22,15 @@ P_SRC_DEV   = P_SRC + "/dev"
 P_SRC_TST   = P_SRC + "/test"
 P_NOISY     = "./high_res_wham/audio"
 P_LOCAL     = "./local"
-P_JSON      = P_LOCAL + "/metafile"
+P_META      = P_LOCAL + "/metafile"
+P_JSON      = P_META  + f'/{N_SRC}speakers'
 P_TMP       = P_LOCAL + '/tmp'
 
-# TODO: only support 8k 2spk min mode for now
+# TODO: only support 8k min mode for now
 P_MIX       = './mix'
-P_MIX_SPK   = P_MIX + '/2speakers'
+P_MIX_SPK   = P_MIX     + f'/{N_SRC}speakers'
 P_MIX_HZ    = P_MIX_SPK + '/wav8k'
-P_MIX_MODE  = P_MIX_HZ + '/min'
+P_MIX_MODE  = P_MIX_HZ  + '/min'
 
 P_SET_OUT   = [P_MIX, P_MIX_SPK, P_MIX_HZ, P_MIX_MODE]
 
@@ -45,9 +48,14 @@ def generateWav():
         {'name':'cv', 'n_gen':N_GEN_DEV},
         {'name':'tt', 'n_gen':N_GEN_TST},
     ]
-    out_path = ['/s1', '/s2', '/mix_clean', '/mix_both']
-
-    cnt = 0
+    if N_SRC == 2:
+        out_path = ['/s1', '/s2', '/mix_clean', '/mix_both']
+    elif N_SRC == 3:
+        out_path = ['/s1', '/s2', '/s3', '/mix_clean', '/mix_both']
+    else:
+        raise Exception('Unsupport N_SRC!')
+    order = [v for v in permutations(range(N_SRC))]       # permutation order
+    cnt   = 0
     print('Generate wav files', end='')
     for d in dataset:
         cnt += 1
@@ -76,22 +84,16 @@ def generateWav():
                 # TODO: Noisy db random
                 noisy = read_scaled_wav(noisy_path, dB(6), True)
             
-            # TODO: only support 2 src now
-            if r['permutation'] == 0:
-                s1 = read_scaled_wav(r['s1_path'], dB( r['db']), True) 
-                s2 = read_scaled_wav(r['s2_path'], dB(-r['db']), True)
-            else:
-                s2 = read_scaled_wav(r['s1_path'], dB( r['db']), True) 
-                s1 = read_scaled_wav(r['s2_path'], dB(-r['db']), True)
-            sample_s1 = quantize(s1[:r['len']])
-            sample_s2 = quantize(s2[:r['len']])
+            pidx  = order[r['permutation']]
+            wav   = []
+            scale = [dB(v) for v in r['db']]
+            for spk in range(N_SRC):
+                wav.append(read_scaled_wav(r[f's{spk + 1}_path'], 1, True))
+            sample    = [quantize(wav[v][:r['len']] * scale[k]) for v, k in zip(pidx, range(N_SRC))]
             sample_n  = noisy[r['noisy_start'] : r['noisy_start'] + r['len']]
 
-            out_data  = [
-                sample_s1,  sample_s2, 
-                sample_s1 + sample_s2, 
-                sample_s1 + sample_s2 + sample_n,
-            ]
+            mix       = sum(sample)
+            out_data  = sample + [sum(sample), sum(sample) + sample_n]
 
             for data, path in zip(out_data, out_path):
                 sf.write(os.path.join(P_MIX_WAV + path, r['name']), data, 8000, subtype='FLOAT')
@@ -99,3 +101,4 @@ def generateWav():
 
 if __name__ == '__main__':
     generateWav()
+    
