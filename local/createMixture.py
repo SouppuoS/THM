@@ -1,16 +1,24 @@
 import os
 import sys
 import json
+import random
 import soundfile as sf
 sys.path.extend('..')
 from wham_scripts.utils import read_scaled_wav, quantize
 
-# Path Information
-P_SRC_TRN   = "./THCHS30/data_thchs30/train"
-P_SRC_DEV   = "./THCHS30/data_thchs30/train"
-P_SRC_TST   = "./THCHS30/data_thchs30/dev"
-P_NOISY     = "./high_res_wham/audio"
+FLAG_SHUFFLE = False
 
+# num of mixture to gen
+N_GEN_TRN   = 5000
+N_GEN_DEV   = 800
+N_GEN_TST   = 2000
+
+# Path Information
+P_SRC       = "./THCHS30/data_thchs30"
+P_SRC_TRN   = P_SRC + "/train"
+P_SRC_DEV   = P_SRC + "/dev"
+P_SRC_TST   = P_SRC + "/test"
+P_NOISY     = "./high_res_wham/audio"
 P_LOCAL     = "./local"
 P_JSON      = P_LOCAL + "/metafile"
 P_TMP       = P_LOCAL + '/tmp'
@@ -20,9 +28,8 @@ P_MIX       = './mix'
 P_MIX_SPK   = P_MIX + '/2speakers'
 P_MIX_HZ    = P_MIX_SPK + '/wav8k'
 P_MIX_MODE  = P_MIX_HZ + '/min'
-P_MIX_WAV   = P_MIX_MODE
 
-P_SET_OUT   = [P_MIX, P_MIX_SPK, P_MIX_HZ, P_MIX_MODE, P_MIX_WAV]
+P_SET_OUT   = [P_MIX, P_MIX_SPK, P_MIX_HZ, P_MIX_MODE]
 
 dB = lambda db: 10 ** (db / 20)
 
@@ -34,9 +41,9 @@ def generateWav():
         os.makedirs(p, exist_ok=True)
 
     dataset = [
-        {'name':'tr'},
-        {'name':'cv'},
-        {'name':'tt'},
+        {'name':'tr', 'n_gen':N_GEN_TRN},
+        {'name':'cv', 'n_gen':N_GEN_DEV},
+        {'name':'tt', 'n_gen':N_GEN_TST},
     ]
     out_path = ['/s1', '/s2', '/mix_clean', '/mix_both']
 
@@ -57,6 +64,10 @@ def generateWav():
         for path in out_path:
             os.makedirs(P_MIX_WAV + path, exist_ok=True)
         
+        if FLAG_SHUFFLE:
+            random.shuffle(f_recipe)
+
+        f_recipe   = f_recipe[:d['n_gen']]        # gen `n_gen` mixtures
         f_recipe   = sorted(f_recipe, key=lambda x: x['noisy_path'])
         noisy_path = None
         for r in f_recipe:

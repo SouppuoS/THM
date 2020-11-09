@@ -8,6 +8,7 @@ from itertools import permutations
 sys.path.extend('..')
 from wham_scripts.utils import read_scaled_wav
 import matplotlib.pyplot as plt
+from pprint import pprint
 
 """
 this script is used to random choose targets which used to make mixture audio
@@ -15,11 +16,11 @@ it will finally output a json file which tell next step how to generate
 """
 
 # Path Information
-P_SRC_TRN   = "./THCHS30/data_thchs30/train"
-P_SRC_DEV   = "./THCHS30/data_thchs30/train"
-P_SRC_TST   = "./THCHS30/data_thchs30/dev"
+P_SRC       = "./THCHS30/data_thchs30"
+P_SRC_TRN   = P_SRC + "/train"
+P_SRC_DEV   = P_SRC + "/dev"
+P_SRC_TST   = P_SRC + "/test"
 P_NOISY     = "./high_res_wham/audio"
-
 P_LOCAL     = "./local"
 P_JSON      = P_LOCAL + "/metafile"
 P_TMP       = P_LOCAL + '/tmp'
@@ -27,11 +28,9 @@ P_TMP       = P_LOCAL + '/tmp'
 # generate paramenters
 N_SRC       = 2
 N_PREMIX    = -1 
-N_NOISY_USE = 200      # num of noisy used in synthesis
+N_NOISY_USE = 2000      # num of noisy used in synthesis
 N_MAX_DB    = 2.5
-N_GEN_TRN   = 4000
-N_GEN_DEV   = 400
-N_GEN_TST   = 400
+N_USE_SP    = 2         # max num of using a specific audio
 
 """
 sort wav file according to speaker
@@ -79,6 +78,10 @@ def chooseSample(category):
                     's2'        : category[s2_idx]['wav'][ut2],
                     'permua'    : random.randint(0, 1),
                     'db'        : random.random() * N_MAX_DB,
+                    'summery'   : {
+                        's1_spk'    : category[s1_idx]['spk_id'],
+                        's2_spk'    : category[s2_idx]['spk_id'],
+                    }
                 })
     random.shuffle(premix)
     return premix
@@ -88,17 +91,20 @@ generate details of recipe include times, len
 """
 def genDetailOfRecipe(recipe, noisy_info):
     mixture    = []
-    used       = []
+    used       = {}
     lst_permut = permutations(range(1))
     noisy, noisy_idx = noisy_info
     n_noisy    = len(noisy_idx)
 
     for r in recipe:
-        if r['s1']['id'] in used or r['s2']['id'] in used:
+        s1id = r['s1']['id']
+        s2id = r['s2']['id']
+        if (s1id in used and used[s1id] >= N_USE_SP) \
+        or (s2id in used and used[s2id] >= N_USE_SP):
             continue
-        used.append(r['s1']['id'])
-        used.append(r['s2']['id'])
-        
+        used[s1id] = 1 if s1id not in used else used[s1id] + 1
+        used[s2id] = 1 if s2id not in used else used[s2id] + 1
+
         """
         read wav files from disk, get len of each wav file, 
         decide the len of mixture, the start point of noisy, etc
@@ -128,6 +134,7 @@ def genDetailOfRecipe(recipe, noisy_info):
             'noisy_path'    : noisy[idx_n]['path'],
             'noisy_start'   : noisy_start,
             'len'           : mix_len,
+            'summery'       : r['summery'],
         })
 
         if len(mixture) % 100 == 0:
@@ -147,7 +154,7 @@ def loadNoisyInfo():
     lst_noisy   = [(k, v) for k, v in zip(range(len(_t)),_t)]   # set of tuple (idx, path)
     random.shuffle(lst_noisy)
     
-    print('Loading noisy info from json...')
+    print('Loading noisy info from json...', end='')
     info      = {}
     noisy_idx = []
     os.makedirs(P_TMP, exist_ok=True)
@@ -156,7 +163,7 @@ def loadNoisyInfo():
             _t = json.load(f)
         info = {int(v[0]):v[1] for v in _t.items()}
 
-    print('Loading noisy info from wav', end='')
+    print('Complete!\nLoading noisy info from wav', end='')
     for idx, path in lst_noisy[:N_NOISY_USE]:
         noisy_idx.append(idx)
         if len(noisy_idx) % 100 == 0:
@@ -174,15 +181,38 @@ def loadNoisyInfo():
     
     return info, noisy_idx
 
+"""
+Do some summery task
+"""
+def summeryRecipe(mixture):
+    n_spkSample = {}        # summery the number of a specific speaker's audio used in mixture
+    for r in mixture:
+        s1_spk = r['summery']['s1_spk']
+        s2_spk = r['summery']['s2_spk']
+        n_spkSample[s1_spk] = 1 if s1_spk not in n_spkSample else n_spkSample[s1_spk] + 1
+        n_spkSample[s2_spk] = 1 if s2_spk not in n_spkSample else n_spkSample[s2_spk] + 1
+    return n_spkSample
+
+"""
+plot bar of the num used in mixture
+"""
+def plotBarOfNum(s):
+    p_bar_spk_x = {}
+    p_bar_color = ['r', 'g', 'b']
+    datasetName = ['tr', 'cv', 'tt']
+    for idx, c in zip(range(3), p_bar_color):
+        s_Num = s[datasetName[idx] + 'NumUsed']
+        for spk, num in s_Num.items():
+            if spk not in p_bar_spk_x:
+                p_bar_spk_x[spk] = len(p_bar_spk_x)
+            plt.bar(p_bar_spk_x[spk] + idx * 0.3, num, width=0.3, color=c)
+    pprint(p_bar_spk_x)
+    plt.show()
+"""
+gen mixture
+"""
 def genMetafile():       
-    os.makedirs(P_JSON, exist_ok=True)
-    lst_trn = [k for k in os.listdir(P_SRC_TRN) if not k.endswith('.trn')]
-    lst_tst = [k for k in os.listdir(P_SRC_TST) if not k.endswith('.trn')]
-    random.shuffle(lst_trn)
-    lst_dev     = lst_trn[:len(lst_tst)]
-    lst_trn     = lst_trn[len(lst_tst):]
-    noisy       = loadNoisyInfo()
-    
+    os.makedirs(P_JSON, exist_ok=True) 
     """
     file: 
         set of file names under P_SRC_*
@@ -204,12 +234,15 @@ def genMetafile():
             db used in 1st 2nd or 3rd sound in recipe]
     """
     Dataset = [
-        {'name':'tr', 'file': lst_trn, 'path': P_SRC_TRN, 'n_gen': N_GEN_TRN},
-        {'name':'cv', 'file': lst_dev, 'path': P_SRC_TRN, 'n_gen': N_GEN_DEV},
-        {'name':'tt', 'file': lst_tst, 'path': P_SRC_TST, 'n_gen': N_GEN_TST},
+        {'name':'tr', 'path': P_SRC_TRN},
+        {'name':'cv', 'path': P_SRC_DEV},
+        {'name':'tt', 'path': P_SRC_TST},
     ]
+    noisy   = loadNoisyInfo()
+    summery = {}
     for ds in Dataset:
         print(r"Gen {} speech samples".format(ds['name']), end='')
+        ds['file']      = [k for k in os.listdir(ds['path']) if not k.endswith('.trn')]
         ds['file'].sort()
         ds['category']  = catalize(ds['file'], ds['path'])
         ds['recipe']    = chooseSample(ds['category'])
@@ -217,7 +250,11 @@ def genMetafile():
         
         print("Complete!\nGenerated {} samples!".format(len(ds['mixture'])))
         with open(P_JSON + '/' + ds['name'] + '.json', 'w') as f:
-            json.dump(ds['mixture'][:ds['n_gen']], f)
+            json.dump(ds['mixture'], f)
+
+        # summery all mixture
+        summery[ds['name'] + 'NumUsed'] = summeryRecipe(ds['mixture'])
+    plotBarOfNum(summery)
 
 if __name__ == "__main__":
     genMetafile()
