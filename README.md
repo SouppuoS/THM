@@ -5,33 +5,38 @@ These scripts are used to generate the THM, a tiny dataset for speech separation
 
 [wham_scripts](https://storage.googleapis.com/whisper-public/wham_scripts.tar.gz) need to be placed under this folder. Unzip file and put it under the folder, do not make any change.
 
-Default json files are placed under `local/metafile`. If you want to gen your own dataset, scripts can be found under:  
->./local/genRecipe.py  
-
 ### How to use
 To generate wav files, you also need to place [high_res_wham](https://storage.googleapis.com/whisper-public/high_res_wham.zip) (can be found on wham website) and [THCHS30](http://www.openslr.org/18) under this folder. Script to generate wav files:  
 >./local/createMixture.py  
 
-To make it works your folder should look like this:
+Folder should look like this:
 >THM  
 |--high_res_wham  
 |--local  
 |--THCHS30  
 |--wham_scripts  
+|--gen.sh
 
-Mixed audio will be placed in:
->./mix  
-  
+You can use:
+>./gen.sh --stage 2 --src 2
 
+to generate wav file using default json. Mixed audio will be placed in `./mix`. Folder `mix_clean` contain mixed audio with NO noise, like wsj0-mix, wav files under `mix_both` are noise added.
 
-Folder `mix_clean` contain mixed audio with NO noise, like wsj0-mix, wav files under `mix_both` are noise added.
+Default json files are placed under `local/metafile`. If you want to gen your own dataset, scripts can be found under:  
+>./local/genRecipe.py  
+
+or type:
+>./gen.sh --stage 1 --src 2  
+
+to generate a new 2 speakers mixture json file.   
 
 ### Feature
 * [x] noise mixed
-* [x] 3+ speakers support
+* [x] support any number of speakers 
 
 ### Schedule 
 - 2020/10/31: Have a plan. 
 - 2020/11/1: Finished 2spk-min-8k-gen.  
 - 2020/11/9: Support 3 speakers mixture.
 - 2020/11/14: Refactor code, now support any #spks mixture.
+- 2020/11/14: add a bash script.

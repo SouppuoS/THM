@@ -26,7 +26,7 @@ P_LOCAL     = "./local"
 P_META      = P_LOCAL + "/metafile"
 P_TMP       = P_LOCAL + '/tmp'
 
-# generate paramenters
+# generate paramenters, will be changed by args
 N_SRC       = 4
 N_PREMIX    = 5
 N_NOISY_USE = 2000      # num of noisy used in synthesis
@@ -294,7 +294,13 @@ def plotBarOfNum(s):
 """
 gen mixture
 """
-def genMetafile():       
+def genMetafile(args):
+    global N_SRC, N_PREMIX, N_USE_SP
+    N_SRC       = args.src
+    N_PREMIX    = args.premix
+    N_USE_SP    = args.dupli
+    
+    PLOT_STAT_FLG = args.static
     """
     file: 
         set of file names under P_SRC_*
@@ -339,7 +345,7 @@ def genMetafile():
         else:
             ds['recipe'] = chooseSample_nsrc(ds['category'])
 
-        print("Complete!\nGen {} details".format(ds['name']), end='')        
+        print("Complete!\nGen {} details".format(ds['name']), end='')
         ds['mixture'] = genDetailOfRecipe(ds['recipe'], noisy)
 
         print("Complete!\nGenerated {} samples!".format(len(ds['mixture'])))
@@ -348,7 +354,15 @@ def genMetafile():
 
         # summery all mixture
         summery[ds['name'] + 'NumUsed'] = summeryRecipe(ds['mixture'])
-    plotBarOfNum(summery)
+    
+    if PLOT_STAT_FLG:
+        plotBarOfNum(summery)
 
 if __name__ == "__main__":
-    genMetafile()
+    parse = argparse.ArgumentParser()
+    parse.add_argument("--src",     default=2,  type=int,   help='Number of speakers')
+    parse.add_argument("--premix",  default=-1, type=int,   help='Number of mixing audio from a specific combine of speakers')
+    parse.add_argument("--dupli",   default=2,  type=int,   help='Number of max times using a specific audio')
+    parse.add_argument("--static",  default=False,  type=bool,   help='Static of speakers used in mixtures')
+    conf  = parse.parse_args()
+    genMetafile(conf)
