@@ -4,7 +4,8 @@ import argparse
 import json
 import random
 import soundfile as sf
-from itertools import permutations
+from itertools import permutations, combinations
+from math import factorial, inf
 sys.path.extend('..')
 from wham_scripts.utils import read_scaled_wav
 import matplotlib.pyplot as plt
@@ -26,8 +27,8 @@ P_META      = P_LOCAL + "/metafile"
 P_TMP       = P_LOCAL + '/tmp'
 
 # generate paramenters
-N_SRC       = 3
-N_PREMIX    = -1 
+N_SRC       = 4
+N_PREMIX    = 5
 N_NOISY_USE = 2000      # num of noisy used in synthesis
 N_MAX_DB    = 2.5
 N_USE_SP    = 2         # max num of using a specific audio
@@ -65,15 +66,17 @@ def chooseSample_2src(category):
     n_speaker = len(category)
     premix    = []
     for s1_idx in range(n_speaker - 1):
+        ut1Idx = [v for v in range(len(category[s1_idx]['wav']))]
+        random.shuffle(ut1Idx)
         for s2_idx in range(s1_idx + 1, n_speaker):
-            ut1Idx = [v for v in range(len(category[s1_idx]['wav']))]
             ut2Idx = [v for v in range(len(category[s2_idx]['wav']))]
-            random.shuffle(ut1Idx)
             random.shuffle(ut2Idx)
+            
             if N_PREMIX > len(ut1Idx) or N_PREMIX > len(ut2Idx):
-                print(f"N_PREMIX larger than ut({s1_idx}-{len(ut1Idx)}:{s2_idx}-{len(ut2Idx)})")
-            db = random.random() * N_MAX_DB
+                continue
+            
             for ut1, ut2 in zip(ut1Idx[:N_PREMIX], ut2Idx[:N_PREMIX]):
+                db = random.random() * N_MAX_DB
                 premix.append({
                     's1'        : category[s1_idx]['wav'][ut1],
                     's2'        : category[s2_idx]['wav'][ut2],
@@ -93,19 +96,22 @@ def chooseSample_2src(category):
 def chooseSample_3src(category):
     n_speaker = len(category)
     premix    = []
-    for s1_idx in range(n_speaker - 1):
-        for s2_idx in range(s1_idx + 1, n_speaker):
+
+    for s1_idx in range(n_speaker - 2):
+        ut1Idx = [v for v in range(len(category[s1_idx]['wav']))]
+        random.shuffle(ut1Idx)
+        for s2_idx in range(s1_idx + 1, n_speaker - 1):
+            ut2Idx = [v for v in range(len(category[s2_idx]['wav']))]
+            random.shuffle(ut2Idx)    
             for s3_idx in range(s2_idx + 1, n_speaker):
-                ut1Idx = [v for v in range(len(category[s1_idx]['wav']))]
-                ut2Idx = [v for v in range(len(category[s2_idx]['wav']))]
                 ut3Idx = [v for v in range(len(category[s3_idx]['wav']))]
-                random.shuffle(ut1Idx)
-                random.shuffle(ut2Idx)
                 random.shuffle(ut3Idx)
+
                 if N_PREMIX > len(ut1Idx) or N_PREMIX > len(ut2Idx) or N_PREMIX > len(ut3Idx):
-                    raise Exception('N_PREMIX larger than ut len')
-                db = random.random() * N_MAX_DB
+                    continue
+                
                 for ut1, ut2, ut3 in zip(ut1Idx[:N_PREMIX], ut2Idx[:N_PREMIX], ut3Idx[:N_PREMIX]):
+                    db = random.random() * N_MAX_DB
                     premix.append({
                         's1'        : category[s1_idx]['wav'][ut1],
                         's2'        : category[s2_idx]['wav'][ut2],
@@ -118,6 +124,45 @@ def chooseSample_3src(category):
                             's3_spk'    : category[s3_idx]['spk_id'],
                         }
                     })
+    random.shuffle(premix)
+    return premix
+
+"""
+(for more than 3 speakers)
+"""
+def chooseSample_nsrc(category):
+    n_speaker = len(category)
+    combList  = combinations(range(n_speaker), N_SRC)
+    permutNum = factorial(N_SRC)
+    premix    = []
+    for spks in combList:
+        utIdx     = [[v for v in range(len(category[id]['wav']))] for id in spks]
+        minUtSize = inf
+        validComb = True
+
+        for segId in utIdx: 
+            if N_PREMIX > len(segId):
+                validComb = False
+                break
+            random.shuffle(segId)
+            minUtSize = min(minUtSize, len(segId))
+        if not validComb:
+            continue
+
+        minUtSize = N_PREMIX if N_PREMIX != -1 else minUtSize
+        for _utId in range(minUtSize):
+            db   = [random.random() * N_MAX_DB for _ in range(N_SRC)]
+            _mix = {
+                'permua'    : random.randint(0, permutNum - 1),
+                'db'        : db,
+                'summery'   : {},
+            } 
+            for _id in range(N_SRC):
+                _mix[f's{_id + 1}']                = category[spks[_id]]['wav'][utIdx[_id][_utId]]
+                _mix['summery'][f's{_id + 1}_spk'] = category[spks[_id]]['spk_id']
+            premix.append(_mix)
+            if len(premix) % 10000 == 0:
+                print('.', end='')
     random.shuffle(premix)
     return premix
 
@@ -281,18 +326,22 @@ def genMetafile():
     os.makedirs(P_META, exist_ok=True) 
     os.makedirs(P_JSON, exist_ok=True) 
     for ds in Dataset:
-        print(r"Gen {} speech samples".format(ds['name']), end='')
+        print(r"Gen {} speech samples...".format(ds['name']), end='')
         ds['file'] = [k for k in os.listdir(ds['path']) if not k.endswith('.trn')]
         ds['file'].sort()
         ds['category'] = catalize(ds['file'], ds['path'])
+        
+        print("Complete!\nGen {} premix".format(ds['name']), end='')
         if N_SRC == 2:
             ds['recipe'] = chooseSample_2src(ds['category'])
         elif N_SRC == 3:
             ds['recipe'] = chooseSample_3src(ds['category'])
         else:
-            raise Exception('N_SRC not support!')
+            ds['recipe'] = chooseSample_nsrc(ds['category'])
+
+        print("Complete!\nGen {} details".format(ds['name']), end='')        
         ds['mixture'] = genDetailOfRecipe(ds['recipe'], noisy)
-        
+
         print("Complete!\nGenerated {} samples!".format(len(ds['mixture'])))
         with open(P_JSON + '/' + ds['name'] + '.json', 'w') as f:
             json.dump(ds['mixture'], f)
