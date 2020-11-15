@@ -10,7 +10,7 @@ n_sp=2
 
 . local/parse_options.sh
 
-if [[$stage -le 0 ]]; then
+if [[ $stage -le 0 ]]; then
     echo Stage 0: prepare data
     echo Not implement yet...
     exit

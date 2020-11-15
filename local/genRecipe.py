@@ -151,7 +151,7 @@ def chooseSample_nsrc(category):
 
         minUtSize = N_PREMIX if N_PREMIX != -1 else minUtSize
         for _utId in range(minUtSize):
-            db   = [random.random() * N_MAX_DB for _ in range(N_SRC)]
+            db   = [(random.random() * 2 - 1) * N_MAX_DB for _ in range(N_SRC)]
             _mix = {
                 'permua'    : random.randint(0, permutNum - 1),
                 'db'        : db,
