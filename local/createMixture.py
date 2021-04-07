@@ -8,6 +8,10 @@ sys.path.extend('..')
 from wham_scripts.utils import read_scaled_wav, quantize
 from itertools import permutations
 
+from local.genRecipe import decodeGeo
+import scipy.signal as ss
+import rir_generator as rir
+
 # num of mixture to gen, will be changed by args
 FLAG_SHUFFLE  = False
 N_SRC         = 3
@@ -46,8 +50,13 @@ def generateWav(args):
 
     P_SET_OUT   = [P_MIX, P_MIX_SPK, P_MIX_HZ, P_MIX_MODE]
 
-    for p in P_SET_OUT:
-        os.makedirs(p, exist_ok=True)
+    if args.arrayGeo is not None:
+        arrayGeometry = decodeGeo(args.arrayGeo)
+        # only support one room setting
+        roomInfo      = decodeGeo(args.room)[0]
+    else:
+        arrayGeometry = None
+        roomInfo      = None
 
     dataset = [
         {'name':'tr', 'n_gen':N_GEN_TRN},
@@ -69,7 +78,6 @@ def generateWav(args):
             f_recipe = json.load(f)
         
         P_MIX_WAV = P_MIX_MODE + '/' + d['name']
-        os.makedirs(P_MIX_WAV , exist_ok=True)
         for path in out_path:
             os.makedirs(P_MIX_WAV + path, exist_ok=True)
         
@@ -92,8 +100,18 @@ def generateWav(args):
                 wav.append(read_scaled_wav(r[f's{spk + 1}_path'], 1, True))
             sample    = [quantize(wav[v][:r['len']] * scale[k]) for v, k in zip(pidx, range(N_SRC))]
             sample_n  = noisy[r['noisy_start'] : r['noisy_start'] + r['len']]
-            mix       = sum(sample)
-            out_data  = sample + [sum(sample), sum(sample) + sample_n]
+            if 'ssl' in r:
+                wav_multi = []
+                for _wav, s in zip(sample + [sample_n], r['ssl']):
+                    h = rir.generate(
+                        c=340, fs=8000,                         # only support 8k
+                        r=arrayGeometry, s=s, L=roomInfo,
+                        reverberation_time=0.4, nsample=4096,
+                    )
+                    wav_multi.append(ss.convolve(h[:, None, :], _wav[...,None,None]).transpose(1,0,2).squeeze())
+                out_data = sample + [sum(wav_multi[:N_SRC]), sum(wav_multi)]
+            else:
+                out_data = sample + [sum(sample), sum(sample) + sample_n]
 
             for data, path in zip(out_data, out_path):
                 sf.write(os.path.join(P_MIX_WAV + path, r['name']), data, 8000, subtype='FLOAT')
@@ -105,6 +123,8 @@ if __name__ == '__main__':
     parse.add_argument("--gen_trn",     default=5000,   type=int,   help='Number of train set')
     parse.add_argument("--gen_dev",     default=800,    type=int,   help='Number of dev set')
     parse.add_argument("--gen_tst",     default=2000,   type=int,   help='Number of test set')
+    parse.add_argument("--arrayGeo",    default=None,   nargs='+',  help="set the geometry of the mic array, e.g. --arrayGeo 0,1,0 0,0,0, support 2-d or 3-d coord")
+    parse.add_argument("--room",        default="4,4,2",nargs='+',  help="size of the room, e.g. --room 4,4,2, support 2-d or 3-d")
     conf  = parse.parse_args()
     generateWav(conf)
     

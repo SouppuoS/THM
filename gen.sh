@@ -22,7 +22,8 @@ if [[ $stage -le 1 ]]; then
     python local/genRecipe.py \
     --src $src \
     --premix $n_pre \
-    --dupli $n_sp
+    --dupli $n_sp \
+    --room 4,6,3
 fi
 
 if [[ $stage -le 2 ]]; then

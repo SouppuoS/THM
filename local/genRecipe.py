@@ -34,6 +34,21 @@ N_MAX_DB    = 2.5
 N_USE_SP    = 2         # max num of using a specific audio
 
 """
+decode geometry infomation
+geoInfo: list[x0,y0 x1,y1 ... xn,yn]
+"""
+def decodeGeo(geoInfo):
+    arrayGeo   = []
+    for cords in geoInfo:
+        cord = cords.split(',')
+        if len(cord) not in [2, 3]:
+            raise Exception('only support 2/3-d coord')
+        x, y = float(cord[0]), float(cord[1])
+        z    = 1 if len(cord) == 2 else float(cord[2])
+        arrayGeo.append([x, y, z])
+    return arrayGeo
+
+"""
 sort wav file according to speaker
 """
 def catalize(data_list, path):
@@ -169,12 +184,13 @@ def chooseSample_nsrc(category):
 """
 generate details of recipe include times, len
 """
-def genDetailOfRecipe(recipe, noisy_info):
+def genDetailOfRecipe(recipe, noisy_info, room, arrayGeo, minSSL):
     mixture    = []
     used       = {}
     lst_permut = permutations(range(1))
     noisy, noisy_idx = noisy_info
     n_noisy    = len(noisy_idx)
+    l2dist     = lambda x,y: (x[0] - y[0]) ** 2 + (x[1] - y[1]) ** 2 + (x[2] - y[2]) ** 2
 
     for r in recipe:
         spkValid = True
@@ -214,6 +230,17 @@ def genDetailOfRecipe(recipe, noisy_info):
         while noisy[idx_n]['len'] < mix_len:
             idx_n = noisy_idx[random.randint(0, n_noisy - 1)]
         noisy_start         = random.randint(0, noisy[idx_n]['len'] - mix_len)
+        # location of sound source
+        if room is not None:
+            # for N_SRC sound source + 1 noise source, only support 1 noise source for now.
+            mix['ssl'] = []
+            for _ in range(N_SRC + 1):
+                ssl = arrayGeo[0]
+                d2  = minSSL ** 2
+                while d2 > l2dist(ssl, arrayGeo[0]):
+                    ssl = [random.random() * room[0], random.random() * room[1], random.random() * room[2]]
+                mix['ssl'].append(ssl)
+
         mix['noisy_path']   = noisy[idx_n]['path']
         mix['noisy_start']  = noisy_start
         mix['len']          = mix_len
@@ -296,10 +323,17 @@ gen mixture
 """
 def genMetafile(args):
     global N_SRC, N_PREMIX, N_USE_SP
-    N_SRC       = args.src
-    N_PREMIX    = args.premix
-    N_USE_SP    = args.dupli
-    
+    N_SRC         = args.src
+    N_PREMIX      = args.premix
+    N_USE_SP      = args.dupli
+    if args.arrayGeo is not None:
+        arrayGeometry = decodeGeo(args.arrayGeo)
+        # only support one room setting
+        roomInfo      = decodeGeo(args.room)[0]
+    else:
+        arrayGeometry = None
+        roomInfo      = None
+
     PLOT_STAT_FLG = args.static
     """
     file: 
@@ -346,11 +380,11 @@ def genMetafile(args):
             ds['recipe'] = chooseSample_nsrc(ds['category'])
 
         print("Complete!\nGen {} details".format(ds['name']), end='')
-        ds['mixture'] = genDetailOfRecipe(ds['recipe'], noisy)
+        ds['mixture'] = genDetailOfRecipe(ds['recipe'], noisy, roomInfo, arrayGeometry, args.distSSL)
 
         print("Complete!\nGenerated {} samples!".format(len(ds['mixture'])))
         with open(P_JSON + '/' + ds['name'] + '.json', 'w') as f:
-            json.dump(ds['mixture'], f)
+            json.dump(ds['mixture'], f, indent=4)
 
         # summery all mixture
         summery[ds['name'] + 'NumUsed'] = summeryRecipe(ds['mixture'])
@@ -360,9 +394,12 @@ def genMetafile(args):
 
 if __name__ == "__main__":
     parse = argparse.ArgumentParser()
-    parse.add_argument("--src",     default=2,  type=int,   help='Number of speakers')
-    parse.add_argument("--premix",  default=-1, type=int,   help='Number of mixing audio from a specific combine of speakers')
-    parse.add_argument("--dupli",   default=2,  type=int,   help='Number of max times using a specific audio')
-    parse.add_argument("--static",  default=False,  type=bool,   help='Static of speakers used in mixtures')
+    parse.add_argument("--src",      default=2,         type=int,       help='Number of speakers')
+    parse.add_argument("--premix",   default=-1,        type=int,       help='Number of mixing audio from a specific combine of speakers')
+    parse.add_argument("--dupli",    default=2,         type=int,       help='Number of max times using a specific audio')
+    parse.add_argument("--static",   default=False,     type=bool,      help='Static of speakers used in mixtures')
+    parse.add_argument("--arrayGeo", default=None,      nargs='+',      help="set the geometry of the mic array, e.g. --arrayGeo 0,1,0 0,0,0, support 2-d or 3-d coord")
+    parse.add_argument("--room",     default="4,4,2",   nargs='+',      help="size of the room, e.g. --room 4,4,2, support 2-d or 3-d")
+    parse.add_argument("--distSSL",  default=1.0,       type=float,     help="minimun distance between sound source and microphone")
     conf  = parse.parse_args()
     genMetafile(conf)

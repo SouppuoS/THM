@@ -35,6 +35,7 @@ to generate a new 2/3/4 speakers mixture json file.
 ### Feature
 * [x] noise mixed
 * [x] support any number of speakers 
+* [x] both single and multi-channel mixture
 
 ### Schedule 
 - 2020/10/31: Have a plan. 
@@ -42,3 +43,4 @@ to generate a new 2/3/4 speakers mixture json file.
 - 2020/11/9: Support 3 speakers mixture.
 - 2020/11/14: Refactor code, now support any #spks mixture.
 - 2020/11/14: add a bash script.
+- 2021/4/8: add support for multichannel
