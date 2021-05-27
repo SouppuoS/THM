@@ -184,7 +184,7 @@ def chooseSample_nsrc(category):
 """
 generate details of recipe include times, len
 """
-def genDetailOfRecipe(recipe, noisy_info, room, arrayGeo, minSSL):
+def genDetailOfRecipe(recipe, noisy_info, room, arrayGeo, minSSL, noisyCfg='rand'):
     mixture    = []
     used       = {}
     lst_permut = permutations(range(1))
@@ -387,7 +387,7 @@ def genMetafile(args):
             json.dump(ds['mixture'], f, indent=4)
 
         # summery all mixture
-        summery[ds['name'] + 'NumUsed'] = summeryRecipe(ds['mixture'])
+        # summery[ds['name'] + 'NumUsed'] = summeryRecipe(ds['mixture'])
     
     if PLOT_STAT_FLG:
         plotBarOfNum(summery)

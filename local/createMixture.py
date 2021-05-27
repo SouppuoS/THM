@@ -48,7 +48,7 @@ def generateWav(args):
     P_MIX_HZ    = P_MIX_SPK + '/wav8k'
     P_MIX_MODE  = P_MIX_HZ  + '/min'
 
-    P_SET_OUT   = [P_MIX, P_MIX_SPK, P_MIX_HZ, P_MIX_MODE]
+    cleanMixVer = True if N_SRC > 1 else False
 
     if args.arrayGeo is not None:
         arrayGeometry = decodeGeo(args.arrayGeo)
@@ -63,7 +63,7 @@ def generateWav(args):
         {'name':'cv', 'n_gen':N_GEN_DEV},
         {'name':'tt', 'n_gen':N_GEN_TST},
     ]
-    out_path = [f'/s{v + 1}' for v in range(N_SRC)] + ['/mix_clean', '/mix_both']
+    out_path = [f'/s{v + 1}' for v in range(N_SRC)] + (['/mix_clean', '/mix_both'] if cleanMixVer else ['/mix_both'])
     order    = [v for v in permutations(range(N_SRC))]       # permutation order
     cnt      = 0
     print('Generate wav files', end='')
@@ -90,8 +90,8 @@ def generateWav(args):
         for r in f_recipe:
             if noisy_path != r['noisy_path']:
                 noisy_path = r['noisy_path']
-                # TODO: Noisy db random
-                noisy = read_scaled_wav(noisy_path, dB(6), True)
+                rdB   = random.randint(6, 18)
+                noisy = read_scaled_wav(noisy_path, dB(rdB), True)
             
             pidx  = order[r['permutation']]
             wav   = []
@@ -106,12 +106,12 @@ def generateWav(args):
                     h = rir.generate(
                         c=340, fs=8000,                         # only support 8k
                         r=arrayGeometry, s=s, L=roomInfo,
-                        reverberation_time=0.4, nsample=4096,
+                        reverberation_time=0.2, nsample=4096,
                     )
                     wav_multi.append(ss.convolve(h[:, None, :], _wav[...,None,None]).transpose(1,0,2).squeeze())
-                out_data = sample + [sum(wav_multi[:N_SRC]), sum(wav_multi)]
+                out_data = sample + ([sum(wav_multi[:N_SRC]), sum(wav_multi)] if cleanMixVer else [sum(wav_multi)])
             else:
-                out_data = sample + [sum(sample), sum(sample) + sample_n]
+                out_data = sample + ([sum(sample), sum(sample) + sample_n] if cleanMixVer else [sum(sample) + sample_n])
 
             for data, path in zip(out_data, out_path):
                 sf.write(os.path.join(P_MIX_WAV + path, r['name']), data, 8000, subtype='FLOAT')
